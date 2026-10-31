@@ -1,0 +1,87 @@
+Build a React web app called "Medix Billing" for a medicine home-delivery business in India. The owner enters an order manually, the app calculates everything automatically, and it prints two documents: a customer receipt and a delivery label with a QR code.
+
+TECH STACK
+- React + Vite, plain CSS or Tailwind, no backend.
+- Save orders and settings in localStorage.
+- qrcode.react for QR codes, html5-qrcode for scanning.
+- Printing via window.print() with print-only CSS (and a "Download PDF" option using html2pdf.js or jsPDF).
+- Mobile-friendly. Currency is ₹ with Indian number format (en-IN).
+
+SETTINGS (all editable on a Settings page, stored in localStorage; defaults below)
+- Business name: Medix. Phone, address and a short tagline are editable.
+- Minimum order: 500
+- Tier 1 discount (order MRP total under 1500): 15%
+- Tier 2 discount (order MRP total 1500 or above): 17%
+- Tier threshold: 1500
+- Customer fee (delivery + platform combined): 15
+- Pharmacy discount to me: 15% of MRP
+- Pharmacy commission to me: 3% of MRP
+- My delivery boy cost per order: 25
+
+CREATE ORDER PAGE
+1. Customer details (manual): name, phone (10-digit validation), full address, optional notes.
+2. Medicine rows (manual, add/remove rows): medicine name, MRP per unit, quantity, and an auto-calculated line total (MRP x qty). Add an optional "Not available" checkbox per row that excludes it from the bill.
+3. Payment mode: COD or Paid (UPI).
+4. Live calculation panel that updates as I type:
+   - Total MRP = sum of (MRP x qty) for available items
+   - Discount % = tier 1 or tier 2 based on Total MRP vs threshold (applied automatically, shown as a label like "17% tier applied")
+   - Discount amount = Total MRP x discount %
+   - Fee = customer fee (15)
+   - Amount to pay = Total MRP - discount + fee
+   - You save = discount amount
+   - Show a warning if Total MRP is below the minimum order, and a hint like "Add ₹X more to unlock 17% off" when it is within ₹300 of the threshold.
+5. Owner-only profit panel (collapsible, NEVER printed on any receipt):
+   - Customer pays for medicines = Total MRP - discount
+   - Pharmacy bill = Total MRP x (1 - pharmacy discount %)
+   - Commission = Total MRP x commission %
+   - Profit = (customer medicine payment - pharmacy bill) + commission + fee - delivery cost
+   - Show profit in green if >= 6, amber if 0 to 5, red if negative.
+6. Buttons: "Save order", "Print customer receipt", "Print delivery label", "Save and print both".
+
+ECONOMICS RULES (must match exactly)
+- Margin I get on MRP is 18% (15% pharmacy discount + 3% commission).
+- Under 1500: customer gets 15%, so I keep 3%. At 1500 or above: customer gets 17%, so I keep 1%.
+- Profit formula: (18% - discount%) x Total MRP + fee - delivery cost.
+- Examples to unit test:
+  - MRP 1000: discount 150, pays 865, profit 20
+  - MRP 1500: discount 255, pays 1260, profit 5
+  - MRP 2000: discount 340, pays 1675, profit 10
+- Round money to 2 decimals internally and display rounded to the nearest rupee on receipts (no stray paise).
+
+DOCUMENT 1: CUSTOMER RECEIPT (A5 or A4, clean, brand green #14532d with lime accent)
+- Header: Medix logo text, phone, address
+- Order number (format MDX-YYYYMMDD-001, auto-increment per day), date and time
+- Customer name, phone, address
+- Items table: #, medicine, qty, MRP, line total (unavailable items shown struck out as "Not available")
+- Summary: Total MRP, Discount (17%), Delivery + platform fee, Amount to pay, You saved, payment mode
+- Footer: "Delivery within 24 hours", thank you line, and a small English + Bengali line (e.g. "ধন্যবাদ! মেডিক্সের সাথে থাকার জন্য।")
+- Do NOT show profit, pharmacy cost or commission anywhere on it.
+
+DOCUMENT 2: DELIVERY LABEL (small, 4x6 inch / 100x150 mm, thermal-printer friendly, black and white)
+- Order number in large text
+- Customer name, phone and full address in large readable text
+- Amount to collect (big and bold): "COLLECT ₹1,260 (COD)" or "PAID - DO NOT COLLECT"
+- Number of items and notes
+- QR code encoding JSON: {"order":"MDX-...","phone":"...","amt":...,"mode":"COD"}
+- Date and a "Handle with care - Medicines" line
+- No pricing breakdown, no profit info.
+
+SCAN AND DELIVER PAGE
+- Camera QR scanner page. Scanning a label opens that order, shows customer details and the amount to collect, and has a "Mark as delivered" button that stores delivered time.
+- Order statuses: Pending, Out for delivery, Delivered, Cancelled.
+
+ORDERS PAGE
+- Table of all orders with search (name, phone, order no), date filter and status filter.
+- Click an order to view, edit, reprint either document, or change status.
+- Summary cards for today and for the selected range: total orders, total sales, total profit, average profit per order. Add a "Export CSV" button.
+
+EXTRA
+- Validate that MRP and qty are positive numbers; qty must be an integer.
+- Keyboard-friendly: Enter on the last field adds a new medicine row.
+- Duplicate order button (reuse the customer and items).
+- A reset/backup option: export and import all data as JSON.
+- Clean, minimal UI in green tones, large touch targets, works well on a phone.
+
+Deliver the full project structure, all code, install and run instructions, and a short README. Keep the pricing logic in one pure function (calculateBill(items, settings)) with unit tests for the three examples above.
+
+, make

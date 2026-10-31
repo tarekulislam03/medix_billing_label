@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* 80mm Thermal Printer Print Styles */
+@media print {
+  @page {
+    /* 80mm width thermal roll paper */
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  html, body {
+    width: 80mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide regular web UI */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Make print area visible */
+  #printable-area, #printable-area * {
+    visibility: visible;
+  }
+
+  #printable-area {
+    position: absolute;
+    left: 2mm;
+    top: 0;
+    width: 76mm !important;
+    max-width: 76mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Thermal roll receipt & label styling */
+  .receipt-80mm, .label-80mm {
+    width: 76mm !important;
+    max-width: 76mm !important;
+    border: none !important;
+    padding: 1mm 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .label-80mm {
+    border: 2px solid #000000 !important;
+    padding: 2mm !important;
+  }
+
+  /* Page break between receipt and label when printing both */
+  .print-page-break {
+    page-break-after: always;
+    break-after: page;
+    display: block;
+    height: 1px;
+    margin-bottom: 4mm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
