@@ -230,7 +230,7 @@ export default function App() {
             <CustomerReceipt order={orderToRender} settings={settings} />
           </div>
           <div ref={hiddenLabelRef} style={{ width: '76mm', background: '#ffffff', marginTop: '10px' }}>
-            <DeliveryLabel order={orderToRender} />
+            <DeliveryLabel order={orderToRender} settings={settings} />
           </div>
         </div>
       )}

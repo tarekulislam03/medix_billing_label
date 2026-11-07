@@ -95,4 +95,60 @@ describe('calculateBill - Economics Rules', () => {
     expect(bill.discountAmount).toBe(100);
     expect(bill.amountToPay).toBe(1000 - 100 + 15); // 915
   });
+
+  it('supports manual discount edits per item without auto tier override', () => {
+    // 2 items totaling 2000 (which would be 17% in auto mode)
+    // but manually set to 10% and 5%
+    const items = [
+      { name: 'Med 1', mrp: 1000, qty: 1, discountPercent: 10, notAvailable: false },
+      { name: 'Med 2', mrp: 1000, qty: 1, discountPercent: 5, notAvailable: false },
+    ];
+    const bill = calculateBill(items, DEFAULT_SETTINGS);
+
+    expect(bill.totalMrp).toBe(2000);
+    // 1000 * 10% = 100, 1000 * 5% = 50 => total discount = 150 (7.5%)
+    expect(bill.discountAmount).toBe(150);
+    expect(bill.discountPercent).toBe(7.5);
+    expect(bill.amountToPay).toBe(2000 - 150 + 15); // 1865
+    expect(bill.discountTier).toBeNull(); // not an auto tier
+  });
+
+  it('supports 0% manual discount', () => {
+    const items = [
+      { name: 'Costly Injection', mrp: 1200, qty: 1, discountPercent: 0, notAvailable: false },
+    ];
+    const bill = calculateBill(items, DEFAULT_SETTINGS);
+
+    expect(bill.totalMrp).toBe(1200);
+    expect(bill.discountAmount).toBe(0);
+    expect(bill.discountPercent).toBe(0);
+    expect(bill.amountToPay).toBe(1215);
+  });
+
+  it('waives customer delivery fee when using coupon ZARIFA17', () => {
+    const items = [
+      { name: 'Paracetamol', mrp: 500, qty: 2, discountPercent: 15, notAvailable: false },
+    ];
+    const bill = calculateBill(items, { ...DEFAULT_SETTINGS, couponCode: 'ZARIFA17' });
+
+    expect(bill.totalMrp).toBe(1000);
+    expect(bill.discountAmount).toBe(150);
+    expect(bill.isFreeDelivery).toBe(true);
+    expect(bill.originalCustomerFee).toBe(15);
+    expect(bill.customerFee).toBe(0);
+    // 1000 - 150 + 0 = 850 (without fee)
+    expect(bill.amountToPay).toBe(850);
+    expect(bill.customerSaves).toBe(165); // 150 discount + 15 delivery fee
+  });
+
+  it('keeps normal delivery fee for unknown coupon', () => {
+    const items = [
+      { name: 'Paracetamol', mrp: 500, qty: 2, discountPercent: 15, notAvailable: false },
+    ];
+    const bill = calculateBill(items, { ...DEFAULT_SETTINGS, couponCode: 'WRONGCODE' });
+
+    expect(bill.isFreeDelivery).toBe(false);
+    expect(bill.customerFee).toBe(15);
+    expect(bill.amountToPay).toBe(865);
+  });
 });

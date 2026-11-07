@@ -22,6 +22,8 @@ export default function CreateOrderView({
   openPrintModal,
   openPreviewModal,
 }) {
+  const defaultDiscount = settings?.tier1DiscountPercent ?? 15;
+
   const [customer, setCustomer] = useState({
     name: '',
     phone: '',
@@ -31,8 +33,12 @@ export default function CreateOrderView({
 
   const [paymentMode, setPaymentMode] = useState('COD');
   const [items, setItems] = useState([
-    { name: '', mrp: '', qty: 1, isBabyCare: false, notAvailable: false },
+    { name: '', mrp: '', qty: 1, discountPercent: defaultDiscount, isBabyCare: false, notAvailable: false },
   ]);
+
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState('');
+  const [couponMessage, setCouponMessage] = useState('');
 
   const [phoneError, setPhoneError] = useState('');
   const [formError, setFormError] = useState('');
@@ -50,14 +56,50 @@ export default function CreateOrderView({
         notes: editingOrder.customer?.notes || '',
       });
       setPaymentMode(editingOrder.paymentMode || 'COD');
+      if (editingOrder.couponCode) {
+        setCouponCode(editingOrder.couponCode);
+        setAppliedCoupon(editingOrder.couponCode);
+        setCouponMessage(editingOrder.couponCode.toUpperCase() === 'ZARIFA17' ? 'Coupon ZARIFA17 applied: Free Delivery!' : '');
+      } else {
+        setCouponCode('');
+        setAppliedCoupon('');
+        setCouponMessage('');
+      }
       if (editingOrder.items && editingOrder.items.length > 0) {
-        setItems(editingOrder.items.map(i => ({ ...i })));
+        setItems(editingOrder.items.map(i => ({
+          ...i,
+          discountPercent: i.discountPercent !== undefined && i.discountPercent !== null && i.discountPercent !== ''
+            ? i.discountPercent
+            : (i.isBabyCare ? (settings?.babyCareDiscountPercent ?? 5) : defaultDiscount),
+        })));
       }
     }
   }, [editingOrder]);
 
-  // Live bill calculation
-  const calc = calculateBill(items, settings);
+  // Live bill calculation with applied coupon
+  const calc = calculateBill(items, { ...settings, couponCode: appliedCoupon });
+
+  const handleApplyCoupon = (overrideCode = null) => {
+    const code = (overrideCode || couponCode).trim().toUpperCase();
+    if (!code) {
+      setCouponMessage('Please enter a coupon code');
+      return;
+    }
+    if (code === 'ZARIFA17') {
+      setCouponCode('ZARIFA17');
+      setAppliedCoupon('ZARIFA17');
+      setCouponMessage('Coupon "ZARIFA17" applied! Delivery fee waived (Free Delivery).');
+    } else {
+      setAppliedCoupon('');
+      setCouponMessage(`Invalid coupon "${code}". Try "ZARIFA17"`);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponCode('');
+    setAppliedCoupon('');
+    setCouponMessage('');
+  };
 
   // Phone validation (10 digits)
   const handlePhoneChange = (e) => {
@@ -76,10 +118,19 @@ export default function CreateOrderView({
       const updated = [...prev];
       if (field === 'qty') {
         const intVal = parseInt(value, 10);
-        updated[index][field] = isNaN(intVal) ? '' : Math.max(1, intVal);
+        updated[index][field] = value === '' ? '' : (isNaN(intVal) ? '' : Math.max(1, intVal));
       } else if (field === 'mrp') {
         const numVal = parseFloat(value);
-        updated[index][field] = isNaN(numVal) ? '' : Math.max(0, numVal);
+        updated[index][field] = value === '' ? '' : (isNaN(numVal) ? '' : Math.max(0, numVal));
+      } else if (field === 'discountPercent') {
+        const numVal = parseFloat(value);
+        updated[index][field] = value === '' ? '' : (isNaN(numVal) ? 0 : Math.max(0, Math.min(100, numVal)));
+      } else if (field === 'isBabyCare') {
+        const isChecked = Boolean(value);
+        updated[index].isBabyCare = isChecked;
+        if (isChecked) {
+          updated[index].discountPercent = settings?.babyCareDiscountPercent ?? 5;
+        }
       } else {
         updated[index][field] = value;
       }
@@ -88,7 +139,13 @@ export default function CreateOrderView({
   };
 
   const addItemRow = () => {
-    setItems(prev => [...prev, { name: '', mrp: '', qty: 1, isBabyCare: false, notAvailable: false }]);
+    const lastItemDiscount = items.length > 0 && items[items.length - 1].discountPercent !== undefined && items[items.length - 1].discountPercent !== ''
+      ? items[items.length - 1].discountPercent
+      : defaultDiscount;
+    setItems(prev => [
+      ...prev,
+      { name: '', mrp: '', qty: 1, discountPercent: lastItemDiscount, isBabyCare: false, notAvailable: false },
+    ]);
   };
 
   const removeItemRow = (index) => {
@@ -135,6 +192,13 @@ export default function CreateOrderView({
         setFormError(`Quantity for ${item.name || 'item'} must be a positive integer`);
         return false;
       }
+      if (item.discountPercent !== '' && item.discountPercent !== undefined) {
+        const disc = Number(item.discountPercent);
+        if (isNaN(disc) || disc < 0 || disc > 100) {
+          setFormError(`Discount for ${item.name || 'item'} must be between 0% and 100%`);
+          return false;
+        }
+      }
     }
 
     setFormError('');
@@ -150,11 +214,12 @@ export default function CreateOrderView({
         name: i.name.trim(),
         mrp: Number(i.mrp) || 0,
         qty: parseInt(i.qty, 10) || 1,
+        discountPercent: i.discountPercent === '' || isNaN(Number(i.discountPercent)) ? 0 : Number(i.discountPercent),
         isBabyCare: Boolean(i.isBabyCare),
         notAvailable: Boolean(i.notAvailable),
       }));
 
-    const bill = calculateBill(validItems, settings);
+    const bill = calculateBill(validItems, { ...settings, couponCode: appliedCoupon });
 
     return {
       id: editingOrder?.id || Date.now().toString(),
@@ -168,6 +233,7 @@ export default function CreateOrderView({
         notes: customer.notes.trim(),
       },
       paymentMode,
+      couponCode: appliedCoupon || null,
       status: editingOrder?.status || 'Pending',
       items: validItems,
       calculation: bill,
@@ -217,7 +283,10 @@ export default function CreateOrderView({
   const resetForm = () => {
     setCustomer({ name: '', phone: '', address: '', notes: '' });
     setPaymentMode('COD');
-    setItems([{ name: '', mrp: '', qty: 1, isBabyCare: false, notAvailable: false }]);
+    setCouponCode('');
+    setAppliedCoupon('');
+    setCouponMessage('');
+    setItems([{ name: '', mrp: '', qty: 1, discountPercent: defaultDiscount, isBabyCare: false, notAvailable: false }]);
     setFormError('');
     setPhoneError('');
     if (onCancelEdit) onCancelEdit();
@@ -348,7 +417,7 @@ export default function CreateOrderView({
                   2. Medicines List
                 </h2>
                 <p className="text-[11px] text-gray-500">
-                  Press Enter in quantity field to automatically add a new medicine row
+                  Discounts are manually editable per item (or use quick apply buttons below)
                 </p>
               </div>
               <button
@@ -361,12 +430,46 @@ export default function CreateOrderView({
               </button>
             </div>
 
+            {/* Quick Discount Presets Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-emerald-50/50 border border-emerald-200/80 rounded-md text-xs">
+              <div className="flex items-center gap-1.5 text-gray-700 font-medium text-[11px]">
+                <Tag className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Quick Apply Discount to All Items:</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {[15, 17, 10, 5, 0].map(pct => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => {
+                      setItems(prev => prev.map(item => ({ ...item, discountPercent: pct })));
+                    }}
+                    className="px-2 py-0.5 bg-white hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded text-[11px] font-bold shadow-2xs transition"
+                  >
+                    {pct}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop Table Header */}
+            <div className="hidden sm:grid grid-cols-12 gap-2 px-3 pt-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+              <div className="col-span-4">Medicine Item</div>
+              <div className="col-span-2">MRP/Unit</div>
+              <div className="col-span-1 text-center">Qty</div>
+              <div className="col-span-2 text-center">Disc % (Edit)</div>
+              <div className="col-span-2 text-right">Net Total</div>
+              <div className="col-span-1 text-right">Action</div>
+            </div>
+
             <div className="space-y-3">
               {items.map((item, index) => {
                 const mrp = Number(item.mrp) || 0;
                 const qty = Number(item.qty) || 0;
                 const lineMrp = mrp * qty;
-                const discPercent = item.isBabyCare ? 5 : (calc.discountPercent || (calc.totalMrp >= 1500 ? 17 : 15));
+                const discPercent = item.discountPercent !== '' && item.discountPercent !== undefined && !isNaN(Number(item.discountPercent))
+                  ? Number(item.discountPercent)
+                  : 0;
                 const lineNet = Math.max(0, lineMrp - Math.round((lineMrp * discPercent) / 100));
                 const isLast = index === items.length - 1;
 
@@ -398,12 +501,12 @@ export default function CreateOrderView({
                         />
                       </div>
 
-                      <div className="col-span-4 sm:col-span-2">
+                      <div className="col-span-3 sm:col-span-2">
                         <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-0.5 sm:hidden">
                           MRP/Unit
                         </label>
                         <div className="relative">
-                          <span className="absolute left-2 top-1.5 text-gray-400 font-sans">₹</span>
+                          <span className="absolute left-2 top-1.5 text-gray-400 font-sans text-xs">₹</span>
                           <input
                             type="number"
                             min="0"
@@ -411,12 +514,12 @@ export default function CreateOrderView({
                             placeholder="0"
                             value={item.mrp}
                             onChange={(e) => handleItemChange(index, 'mrp', e.target.value)}
-                            className="w-full pl-5 pr-2 py-1.5 border border-gray-300 rounded focus:border-[#14532d] outline-none"
+                            className="w-full pl-5 pr-2 py-1.5 border border-gray-300 rounded focus:border-[#14532d] outline-none text-xs"
                           />
                         </div>
                       </div>
 
-                      <div className="col-span-3 sm:col-span-2">
+                      <div className="col-span-2 sm:col-span-1">
                         <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-0.5 sm:hidden">
                           Qty
                         </label>
@@ -428,29 +531,46 @@ export default function CreateOrderView({
                           value={item.qty}
                           onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
                           onKeyDown={(e) => handleKeyDown(e, index, isLast)}
-                          className="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-[#14532d] outline-none text-center"
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded focus:border-[#14532d] outline-none text-center text-xs"
                         />
                       </div>
 
-                      <div className="col-span-2 sm:col-span-1 text-center">
+                      <div className="col-span-3 sm:col-span-2">
                         <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-0.5 sm:hidden">
-                          Disc
+                          Disc %
                         </label>
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-bold ${item.isBabyCare ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                          {item.notAvailable ? '-' : `${discPercent}%`}
-                        </span>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="any"
+                            placeholder="0"
+                            disabled={item.notAvailable}
+                            value={item.discountPercent !== undefined ? item.discountPercent : ''}
+                            onChange={(e) => handleItemChange(index, 'discountPercent', e.target.value)}
+                            className={`w-full pl-2 pr-5 py-1.5 border rounded outline-none text-center font-bold text-xs ${
+                              item.notAvailable
+                                ? 'bg-gray-100 text-gray-400 border-gray-200'
+                                : 'border-gray-300 focus:border-[#14532d] text-emerald-800 bg-white'
+                            }`}
+                          />
+                          <span className="absolute right-2 top-1.5 text-gray-400 font-sans text-xs font-semibold pointer-events-none">
+                            %
+                          </span>
+                        </div>
                       </div>
 
                       <div className="col-span-3 sm:col-span-2 text-right">
                         <label className="block text-[10px] text-gray-500 uppercase font-semibold mb-0.5 sm:hidden">
                           Net
                         </label>
-                        <span className={`font-semibold block py-1.5 ${item.notAvailable ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                        <span className={`font-semibold block py-1.5 text-xs ${item.notAvailable ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                           {item.notAvailable ? '₹0' : formatINR(lineNet)}
                         </span>
                       </div>
 
-                      <div className="col-span-2 sm:col-span-1 flex justify-end">
+                      <div className="col-span-1 sm:col-span-1 flex justify-end">
                         <button
                           type="button"
                           onClick={() => removeItemRow(index)}
@@ -501,8 +621,8 @@ export default function CreateOrderView({
             </div>
 
             {/* Note below items details table */}
-            <div className="p-2.5 bg-gray-50 border border-gray-200 rounded text-[11px] text-gray-700 leading-snug">
-              <span className="font-bold">Note:</span> 15% discount applied on general medicine products below mrp rs.1500 and 17% disocunt over rs.1500. Only 5% discount will be applied on &quot;Baby Care&quot; products.
+            <div className="p-2.5 bg-emerald-50/60 border border-emerald-200 rounded text-[11px] text-emerald-900 leading-snug">
+              <span className="font-bold">Manual Discounts:</span> You can freely edit the discount % for each medicine row above or use quick buttons to apply a discount to all items. Baby Care defaults to 5% when checked.
             </div>
 
             <div className="pt-1 flex justify-start">
@@ -580,31 +700,19 @@ export default function CreateOrderView({
               <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">
                 Live Calculation
               </h2>
-              {calc.discountTier && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  <Tag className="w-3 h-3" />
-                  {calc.discountPercent}% tier applied
-                </span>
-              )}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                <Tag className="w-3 h-3" />
+                Manual Edit Mode
+              </span>
             </div>
 
-            {/* Threshold Warning / Hint */}
+            {/* Threshold Warning */}
             {calc.isBelowMinimum && (
               <div className="p-3 bg-amber-50 border border-amber-300 rounded-md text-amber-800 text-xs flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
                 <div>
                   <span className="font-semibold block">Below Minimum Order</span>
                   Minimum order amount is {formatINR(settings.minOrder)}. Total MRP is {formatINR(calc.totalMrp)}.
-                </div>
-              </div>
-            )}
-
-            {calc.thresholdHint && (
-              <div className="p-3 bg-lime-50 border border-lime-300 rounded-md text-lime-900 text-xs flex items-start gap-2">
-                <Info className="w-4 h-4 shrink-0 text-lime-700 mt-0.5" />
-                <div>
-                  <span className="font-semibold block">Discount Upgrade Available</span>
-                  {calc.thresholdHint}
                 </div>
               </div>
             )}
@@ -617,13 +725,85 @@ export default function CreateOrderView({
               </div>
 
               <div className="flex justify-between text-emerald-700">
-                <span>Discount</span>
+                <span>Discount {calc.totalMrp > 0 && calc.discountAmount > 0 ? `(~${calc.discountPercent}%)` : ''}</span>
                 <span className="font-semibold">-{formatINR(calc.discountAmount)}</span>
               </div>
 
               <div className="flex justify-between text-gray-600">
                 <span>Customer Fee (Delivery + Platform)</span>
-                <span className="font-medium text-gray-900">+{formatINR(calc.customerFee)}</span>
+                {calc.isFreeDelivery ? (
+                  <span className="font-semibold text-emerald-700">
+                    <span className="line-through text-gray-400 font-normal mr-1">{formatINR(calc.originalCustomerFee || settings.customerFee)}</span>
+                    FREE
+                  </span>
+                ) : (
+                  <span className="font-medium text-gray-900">+{formatINR(calc.customerFee)}</span>
+                )}
+              </div>
+
+              {/* Coupon Code Option */}
+              <div className="pt-2 pb-1 border-t border-dashed border-gray-200">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-gray-700 mb-1">
+                  <span className="flex items-center gap-1">
+                    <Tag className="w-3.5 h-3.5 text-emerald-700" />
+                    Coupon Code
+                  </span>
+                  {!appliedCoupon && (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyCoupon('ZARIFA17')}
+                      className="text-[10px] text-emerald-700 hover:text-emerald-900 hover:underline font-bold"
+                    >
+                      Use &quot;ZARIFA17&quot; (Free Delivery)
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="e.g. ZARIFA17"
+                    value={couponCode}
+                    onChange={(e) => {
+                      setCouponCode(e.target.value.toUpperCase());
+                      if (couponMessage) setCouponMessage('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyCoupon();
+                      }
+                    }}
+                    className={`flex-1 px-2.5 py-1.5 text-xs font-mono font-bold uppercase rounded border outline-none ${
+                      appliedCoupon
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : 'bg-white text-gray-800 border-gray-300 focus:border-[#14532d]'
+                    }`}
+                  />
+                  {appliedCoupon ? (
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded transition"
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyCoupon()}
+                      className="px-3 py-1.5 text-xs font-bold text-white bg-[#14532d] hover:bg-[#166534] rounded transition"
+                    >
+                      Apply
+                    </button>
+                  )}
+                </div>
+
+                {couponMessage && (
+                  <p className={`text-[11px] mt-1 font-medium ${appliedCoupon ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    {couponMessage}
+                  </p>
+                )}
               </div>
 
               <div className="border-t border-gray-200 pt-3 flex justify-between items-baseline">
@@ -639,7 +819,7 @@ export default function CreateOrderView({
               </div>
 
               <div className="bg-lime-50 border border-lime-300 text-lime-900 px-3 py-2 rounded text-xs font-medium text-center">
-                Customer saves {formatINR(calc.customerSaves)} on MRP
+                Customer saves {formatINR(calc.customerSaves)} {calc.isFreeDelivery ? '(includes Free Delivery)' : 'on MRP'}
               </div>
             </div>
 

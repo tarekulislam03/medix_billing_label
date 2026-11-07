@@ -83,9 +83,10 @@ export default function CustomerReceipt({ order, settings }) {
               const qty = Number(item.qty) || 0;
               const lineMrp = mrp * qty;
 
-              // Item discount percent
-              const generalDisc = calc.discountPercent || (calc.totalMrp >= 1500 ? 17 : 15);
-              const discPercent = item.isBabyCare ? 5 : generalDisc;
+              // Item discount percent (supports manual edit)
+              const discPercent = item.discountPercent !== undefined && item.discountPercent !== null && item.discountPercent !== ''
+                ? Number(item.discountPercent)
+                : (item.isBabyCare ? (settings?.babyCareDiscountPercent || 5) : (calc.discountPercent || 15));
               const discAmt = Math.round((lineMrp * discPercent) / 100);
               const lineNet = Math.max(0, lineMrp - discAmt);
 
@@ -113,11 +114,6 @@ export default function CustomerReceipt({ order, settings }) {
         </table>
       </div>
 
-      {/* Discount Policy Note */}
-      <div className="py-1.5 border-b-2 border-dashed border-black text-[8px] leading-snug text-black">
-        Note: 15% discount applied on general medicine products below mrp rs.1500 and 17% disocunt over rs.1500. Only 5% discount will be applied on "Baby Care" products.
-      </div>
-
       {/* Summary Totals */}
       <div className="py-1.5 border-b-2 border-dashed border-black text-[10px] space-y-1">
         <div className="flex justify-between">
@@ -130,8 +126,21 @@ export default function CustomerReceipt({ order, settings }) {
         </div>
         <div className="flex justify-between">
           <span>DELIVERY & FEE:</span>
-          <span>+{formatINR(calc.customerFee)}</span>
+          {calc.isFreeDelivery || order.couponCode?.toUpperCase() === 'ZARIFA17' ? (
+            <span className="font-bold">
+              <span className="line-through text-gray-500 font-normal mr-1">{formatINR(calc.originalCustomerFee || settings?.customerFee || 15)}</span>
+              FREE
+            </span>
+          ) : (
+            <span>+{formatINR(calc.customerFee)}</span>
+          )}
         </div>
+        {(calc.isFreeDelivery || order.couponCode?.toUpperCase() === 'ZARIFA17') && (
+          <div className="flex justify-between text-[9px] font-bold">
+            <span>PROMO (ZARIFA17):</span>
+            <span>FREE DELIVERY</span>
+          </div>
+        )}
 
         {/* Amount to pay box */}
         <div className="border-2 border-black p-1 text-center my-1">

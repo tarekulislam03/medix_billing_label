@@ -48,7 +48,7 @@ ECONOMICS RULES (must match exactly)
   - MRP 2000: discount 340, pays 1675, profit 10
 - Round money to 2 decimals internally and display rounded to the nearest rupee on receipts (no stray paise).
 
-DOCUMENT 1: CUSTOMER RECEIPT (A5 or A4, clean, brand green #14532d with lime accent)
+DOCUMENT 1: CUSTOMER RECEIPT (A5 or A4, clean, brand green #14532d with lime accent)the customer
 - Header: Medix logo text, phone, address
 - Order number (format MDX-YYYYMMDD-001, auto-increment per day), date and time
 - Customer name, phone, address

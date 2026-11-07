@@ -17,6 +17,7 @@ export const DEFAULT_SETTINGS = {
   pharmacyDiscountPercent: 15,
   pharmacyCommissionPercent: 3,
   deliveryCost: 25,         // delivery boy cost per order
+  upiId: '8101402916@ybl',  // default UPI payment ID for dynamic QR
 };
 
 /**
@@ -102,6 +103,7 @@ export function calculateBill(items = [], customSettings = {}) {
 
   let totalDiscountAmount = 0;
   let totalOwnerMarginMedicines = 0;
+  let hasExplicitDiscount = false;
 
   const totalPharmacyMarginPercent = Number(settings.pharmacyDiscountPercent) + Number(settings.pharmacyCommissionPercent); // 18%
 
@@ -110,17 +112,25 @@ export function calculateBill(items = [], customSettings = {}) {
     const qty = Number(item.qty) || 0;
     const lineMrp = round2(mrp * qty);
 
+    const hasExplicit = item.discountPercent !== undefined && item.discountPercent !== null && item.discountPercent !== '';
+    if (hasExplicit) {
+      hasExplicitDiscount = true;
+    }
+
+    const itemDiscountPercent = hasExplicit
+      ? Math.max(0, Number(item.discountPercent))
+      : (item.isBabyCare ? babyDiscountPercent : generalDiscountPercent);
+
     if (item.notAvailable || mrp <= 0 || qty <= 0) {
       return {
         ...item,
         lineMrp: 0,
-        discountPercent: item.isBabyCare ? babyDiscountPercent : generalDiscountPercent,
+        discountPercent: itemDiscountPercent,
         discountAmount: 0,
         lineNet: 0,
       };
     }
 
-    const itemDiscountPercent = item.isBabyCare ? babyDiscountPercent : generalDiscountPercent;
     const itemDiscountAmount = round2((lineMrp * itemDiscountPercent) / 100);
     const lineNet = round2(lineMrp - itemDiscountAmount);
 
@@ -140,9 +150,15 @@ export function calculateBill(items = [], customSettings = {}) {
   });
 
   totalDiscountAmount = round2(totalDiscountAmount);
-  const customerFee = settings.customerFee;
+
+  // Coupon handling: "ZARIFA17" waives customer delivery fee
+  const couponCode = (customSettings?.couponCode || '').trim().toUpperCase();
+  const isFreeDelivery = couponCode === 'ZARIFA17';
+
+  const originalCustomerFee = Number(settings.customerFee) || 0;
+  const customerFee = isFreeDelivery ? 0 : originalCustomerFee;
   const amountToPay = round2(totalMrp - totalDiscountAmount + customerFee);
-  const customerSaves = totalDiscountAmount;
+  const customerSaves = round2(totalDiscountAmount + (isFreeDelivery ? originalCustomerFee : 0));
 
   // Owner calculations
   const customerPaysMedicines = round2(totalMrp - totalDiscountAmount);
@@ -171,12 +187,19 @@ export function calculateBill(items = [], customSettings = {}) {
     }
   }
 
+  const effectiveDiscountPercent = hasExplicitDiscount
+    ? (totalMrp > 0 ? round2((totalDiscountAmount / totalMrp) * 100) : 0)
+    : generalDiscountPercent;
+
   return {
     totalMrp,
-    discountPercent: generalDiscountPercent,
-    discountTier,
+    discountPercent: effectiveDiscountPercent,
+    discountTier: hasExplicitDiscount ? null : discountTier,
     discountAmount: totalDiscountAmount,
+    originalCustomerFee,
     customerFee,
+    couponCode: isFreeDelivery ? couponCode : null,
+    isFreeDelivery,
     amountToPay,
     customerSaves,
     customerPaysMedicines,

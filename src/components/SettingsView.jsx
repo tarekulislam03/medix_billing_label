@@ -27,6 +27,7 @@ export default function SettingsView({ settings, onSettingsChange }) {
       'minOrder',
       'tier1DiscountPercent',
       'tier2DiscountPercent',
+      'babyCareDiscountPercent',
       'tierThreshold',
       'customerFee',
       'pharmacyDiscountPercent',
@@ -35,7 +36,7 @@ export default function SettingsView({ settings, onSettingsChange }) {
     ];
 
     for (const key of numericFields) {
-      if (isNaN(Number(formData[key])) || Number(formData[key]) < 0) {
+      if (formData[key] !== undefined && (isNaN(Number(formData[key])) || Number(formData[key]) < 0)) {
         setErrorMsg(`Invalid positive numeric value for ${key}`);
         return;
       }
@@ -43,9 +44,11 @@ export default function SettingsView({ settings, onSettingsChange }) {
 
     const cleanSettings = {
       ...formData,
+      upiId: formData.upiId?.trim() || '8101402916@ybl',
       minOrder: Number(formData.minOrder),
       tier1DiscountPercent: Number(formData.tier1DiscountPercent),
       tier2DiscountPercent: Number(formData.tier2DiscountPercent),
+      babyCareDiscountPercent: Number(formData.babyCareDiscountPercent ?? 5),
       tierThreshold: Number(formData.tierThreshold),
       customerFee: Number(formData.customerFee),
       pharmacyDiscountPercent: Number(formData.pharmacyDiscountPercent),
@@ -161,13 +164,27 @@ export default function SettingsView({ settings, onSettingsChange }) {
                 className="w-full px-3 py-2 text-xs border border-gray-300 rounded focus:border-[#14532d] outline-none"
               />
             </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                UPI Payment ID (for Package Label QR)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. 8101402916@ybl"
+                value={formData.upiId || ''}
+                onChange={(e) => handleChange('upiId', e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-gray-300 rounded focus:border-[#14532d] outline-none font-mono"
+              />
+              <span className="text-[10px] text-gray-500 mt-0.5 block">Dynamic UPI payment QR generated with this ID (Default: 8101402916@ybl)</span>
+            </div>
           </div>
         </div>
 
         {/* Customer Discount & Pricing Rules */}
         <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm space-y-4">
           <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider border-b pb-2">
-            Customer Pricing & Discount Tiers
+            Pricing, Fees & Default Discounts
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -187,20 +204,6 @@ export default function SettingsView({ settings, onSettingsChange }) {
 
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
-                Tier Threshold (₹)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={formData.tierThreshold ?? ''}
-                onChange={(e) => handleChange('tierThreshold', e.target.value, true)}
-                className="w-full px-3 py-2 text-xs border border-gray-300 rounded focus:border-[#14532d] outline-none"
-              />
-              <span className="text-[10px] text-gray-500 mt-0.5 block">Cutoff for Tier 2 discount</span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Customer Fee (₹)
               </label>
               <input
@@ -215,7 +218,7 @@ export default function SettingsView({ settings, onSettingsChange }) {
 
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
-                Tier 1 Discount (&lt; Threshold) %
+                Default Medicine Discount %
               </label>
               <input
                 type="number"
@@ -225,12 +228,41 @@ export default function SettingsView({ settings, onSettingsChange }) {
                 onChange={(e) => handleChange('tier1DiscountPercent', e.target.value, true)}
                 className="w-full px-3 py-2 text-xs border border-gray-300 rounded focus:border-[#14532d] outline-none"
               />
-              <span className="text-[10px] text-gray-500 mt-0.5 block">Default: 15%</span>
+              <span className="text-[10px] text-gray-500 mt-0.5 block">Standard discount for new items (Default: 15%)</span>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
-                Tier 2 Discount (&ge; Threshold) %
+                Baby Care Discount %
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={formData.babyCareDiscountPercent ?? 5}
+                onChange={(e) => handleChange('babyCareDiscountPercent', e.target.value, true)}
+                className="w-full px-3 py-2 text-xs border border-gray-300 rounded focus:border-[#14532d] outline-none"
+              />
+              <span className="text-[10px] text-gray-500 mt-0.5 block">Applied when baby care is checked (Default: 5%)</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Tier Threshold (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.tierThreshold ?? ''}
+                onChange={(e) => handleChange('tierThreshold', e.target.value, true)}
+                className="w-full px-3 py-2 text-xs border border-gray-300 rounded focus:border-[#14532d] outline-none"
+              />
+              <span className="text-[10px] text-gray-500 mt-0.5 block">Reference threshold (₹1,500)</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                High-Volume Discount %
               </label>
               <input
                 type="number"
@@ -240,7 +272,7 @@ export default function SettingsView({ settings, onSettingsChange }) {
                 onChange={(e) => handleChange('tier2DiscountPercent', e.target.value, true)}
                 className="w-full px-3 py-2 text-xs border border-gray-300 rounded focus:border-[#14532d] outline-none"
               />
-              <span className="text-[10px] text-gray-500 mt-0.5 block">Default: 17%</span>
+              <span className="text-[10px] text-gray-500 mt-0.5 block">Quick preset: 17%</span>
             </div>
           </div>
         </div>

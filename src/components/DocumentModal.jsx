@@ -131,7 +131,7 @@ export default function DocumentModal({
                 80mm Thermal Delivery Label
               </span>
               <div ref={labelRef} className="shadow-md bg-white">
-                <DeliveryLabel order={order} />
+                <DeliveryLabel order={order} settings={settings} />
               </div>
             </div>
           )}

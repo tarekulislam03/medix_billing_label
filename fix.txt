@@ -1,0 +1,75 @@
+The egress almost certainly comes from the sync code in
+  syncProcessor.ts. I haven't confirmed it against your
+  Supabase usage dashboard.
+
+  ## Why it's using so much
+
+  1. A full download runs every 4 seconds.
+  The timer at the bottom of the file calls triggerSync(0)
+  every 4 seconds. That runs processSyncJobs() and then
+  pullDataFromCloud(), which downloads every row of these
+  tables:
+      • products
+      • sales
+      • sale_items
+      • customers
+      • purchases
+      • purchase_items
+      • and the other tables
+  That is roughly 21,000 downloads a day per open counter,
+  each one the whole database. Several counters, or the app
+  left open overnight, multiply it.
+  2. Every local write also triggers a full pull. triggerSync
+  runs after each write, so each bill or edit downloads
+  everything again.
+  3. The log size is probably the exec_sql RPC. Every queued
+  job calls exec_sql, so each one is logged along with its
+  full SQL text. Failed or retried jobs add more log entries.
+  I can't see your Supabase logs, so this part is a guess.
+
+  ## Free fixes, biggest impact first
+
+  1. Pull only changes, and much less often.
+      • Keep a "last pulled" timestamp per table and fetch
+      only rows newer than it. This needs an updated_at
+      column on those tables.
+      • Poll every 2–5 minutes instead of every 4 seconds.
+      Also pull right after a push and when the app comes
+      back online.
+      • Expected result: egress drops by well over 95%.
+  2. Pull only when something changed.
+      • Use a cheap check first (select max(updated_at) or a
+      row count) and download only if it differs.
+      • Alternatively, use Supabase Realtime for the few
+      small tables. It has free-tier limits, so measure first.
+  3. Stop pulling old sales. Fetch only the last 30–60 days
+  of sales and sale_items after the first sync. Older data
+  stays in local SQLite.
+  4. Select only the columns you need instead of *.
+  5. Reduce logging.
+      • Batch several queued jobs into one exec_sql call.
+      • Don't retry jobs that fail with unrecoverable errors.
+      • Turn off verbose logging in the Supabase dashboard if
+      it's enabled.
+  6. Clean up the existing data. Delete test or duplicate
+  rows, and archive sales older than a year to a CSV or XLSX
+  export. Then run VACUUM to shrink the database.
+  7. Free backups. The app already creates local SQLite
+  backups, so Supabase doesn't need to hold your full history.
+
+  Egress and log limits reset each billing cycle, so you
+  should get relief once the cycle rolls over. Applying fix 1
+  first keeps you from hitting the limits again.
+
+  Also, the Supabase anon key is hardcoded in
+  syncProcessor.ts:5-6. Because exec_sql runs arbitrary SQL,
+  anyone with that key can run SQL against your database. A
+  third party could be adding to your egress and logs, so
+  it's worth checking the Supabase logs for unfamiliar
+  callers.
+
+  Do you want me to implement fixes 1, 3 and 4 (incremental
+  pull, a 5-minute interval, a 60-day sales window, narrower
+  columns)? It will need a small migration to add updated_at
+  columns. If you do, tell me whether you have more than one
+  counter.

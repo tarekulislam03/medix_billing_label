@@ -2,7 +2,7 @@ import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { formatINR } from '../utils/pricing';
 
-export default function DeliveryLabel({ order }) {
+export default function DeliveryLabel({ order, settings }) {
   if (!order) return null;
 
   const customer = order.customer || {};
@@ -10,13 +10,15 @@ export default function DeliveryLabel({ order }) {
   const isCOD = order.paymentMode === 'COD';
   const orderDate = order.createdAt ? new Date(order.createdAt) : new Date();
 
-  // QR Payload JSON
-  const qrData = JSON.stringify({
-    order: order.orderNumber,
-    phone: customer.phone || '',
-    amt: calc.amountToPay || 0,
-    mode: order.paymentMode || 'COD',
-  });
+  // Dynamic UPI Payment Link (for UPI ID: 8101402916@ybl)
+  const upiId = settings?.upiId || '8101402916@ybl';
+  const payeeName = encodeURIComponent(settings?.businessName || 'Medix');
+  const amountToCollect = Number(calc.amountToPay || 0);
+  const formattedAmount = amountToCollect.toFixed(2);
+  const note = encodeURIComponent(`Order ${order.orderNumber || ''}`.trim());
+
+  // Standard UPI deep link format
+  const upiPaymentUrl = `upi://pay?pa=${upiId}&pn=${payeeName}&am=${formattedAmount}&cu=INR&tn=${note}`;
 
   const totalItemsCount = (order.items || []).filter(i => !i.notAvailable).length;
 
@@ -76,23 +78,35 @@ export default function DeliveryLabel({ order }) {
             Note: {customer.notes}
           </div>
         )}
+        {(order.couponCode || calc.couponCode) && (
+          <div className="border-t border-dotted border-black pt-1 font-sans text-[9px] font-bold">
+            Promo: {order.couponCode || calc.couponCode} (FREE DELIVERY)
+          </div>
+        )}
       </div>
 
-      {/* QR Code & Package Details */}
+      {/* Dynamic UPI Payment QR Code & Package Details */}
       <div className="py-2 border-b-2 border-dashed border-black flex items-center justify-between gap-2">
         <div className="space-y-1 text-[10px]">
           <div className="font-bold">
             Items: <span className="text-xs font-black">{totalItemsCount}</span>
           </div>
-          <div className="text-[9px] leading-tight">
-            Scan QR code to mark delivered
+          <div className="text-[9px] leading-tight font-black uppercase text-black">
+            {isCOD ? 'Scan to Pay (UPI)' : 'UPI Payment QR'}
           </div>
-          <div className="text-[8px] text-gray-600 font-bold">
-            {order.orderNumber}
+          <div className="text-[11px] font-black text-black">
+            {formatINR(calc.amountToPay)}
+          </div>
+          <div className="text-[8px] text-gray-800 font-mono font-bold">
+            {upiId}
+          </div>
+          <div className="text-[7.5px] text-gray-600 font-sans leading-tight">
+            GPay • PhonePe • Paytm • BHIM
           </div>
         </div>
-        <div className="p-1 border border-black bg-white shrink-0">
-          <QRCodeSVG value={qrData} size={88} level="M" />
+        <div className="p-1 border border-black bg-white shrink-0 text-center">
+          <QRCodeSVG value={upiPaymentUrl} size={92} level="M" />
+          <div className="text-[7px] font-mono font-bold uppercase mt-0.5 tracking-wider">UPI PAY</div>
         </div>
       </div>
 
